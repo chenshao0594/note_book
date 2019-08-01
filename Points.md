@@ -1,22 +1,24 @@
 # Points
-
+## 基础
+- 设计模式
+- 红黑树
 ## JVM
-
 - JVM组成部分
 - 内存屏障
 - 垃圾回收
 - 内存模型
-
+- 引用类型—软引用，硬应用，弱应用，虚引用
+- 双亲委派机制
 ## JDK
-
 - ConcurrentHashMap
 - HashMap
 - Lock/Condition/synchronized
 - CountdownLatach/Semaphore/CycleBarrier
 - LongAddr 与AtomicLong区别
-
+- 可重入性
+- AQS机制
+- Future 与CompleteFuture
 ## Dubbo
-
 - 线程模型—Message, Dispatcher...
 - 并发控制
 - 集群容错
@@ -27,6 +29,7 @@
 ## MySQL
 
 - 事务
+- 事务隔离等级
 - 多版本并发控制
 - upsert。
 - 索引数据结构
@@ -38,6 +41,7 @@
 - 单线程效率
 - 集群方式—Hash槽
 - Sentinal----Leader选举
+- 持久化策略—RDB 与AOF
 
 ## Kafka
 
@@ -46,6 +50,7 @@
 - Controller
 - ISR伸缩
 - 零拷贝
+- 顺序写
 - Leader选举
 
 ## Zookeeper
@@ -67,4 +72,12 @@
 - Paxos  Zab Raft协议
 - 分布式锁
 - 一致Hash
+- 分布式事务
+- SOA架构与微服务架构的区别
+
+## 缓存
+
+- 穿透
+- 击穿
+- 雪崩
 
