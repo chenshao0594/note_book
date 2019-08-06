@@ -24,3 +24,21 @@ docker rm $(docker ps -aq)
 docker rmi $(docker images -q)
 ```
 
+## Entry Running Container
+
+````shell
+docker exec -i -t ${container_id}  /bin/bash
+````
+
+## Out Running Container
+
+```shell
+Ctrl -D
+```
+
+## Docker push private Registry, denid
+
+```shell
+docker login ${registry_ip}:${registry_port}
+```
+
