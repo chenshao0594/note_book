@@ -1,6 +1,6 @@
 # Dubbo-SPI
 
-### 自己实现一套SPI的原因
+### 与JDK SPI的区别
 
 - JDK标准的SPI一次性实例化所有的扩展点，容易浪费资源。
   - ExtensionLoader采用两个Map，分别存储扩展点的类以及其实例
@@ -12,6 +12,8 @@
 ### 核心代码
 
 #### ExtensionLoader 
+
+- 扩展点如有wrapper类， 则返回的是Wrapper类实例，
 
 ```java
 private static final String SERVICES_DIRECTORY = "META-INF/services/";
@@ -98,11 +100,12 @@ private Map<String, IllegalStateException> exceptions = new ConcurrentHashMap<>(
     - 缓存创建的扩展实现对象。
 - 扩展点采用单例加载，需要注意线程安全问题。
 
-##### Wrapper
+####  Wrapper扩展对象
 
 - Wrapper类同样实现扩展点接口，但是不是真正的实现。
-  - 从ExtensionLoader返回扩展点时，Wrapper持有了实际的扩展点实现类。
-  - Wrapper代理扩展点。
+  - 主要用途：从ExtensionLoader中返回的实际上是Wrapper类的实现，Wrapper持有了实际的扩展点实现类。
+  - 扩展点的Wrapper类可以有多个，也可以根据需要新增
+  - 通过Wrapper类可以把所有扩展点公共逻辑移至Wrapper中。新加的Wrapper在所有的扩展点上添加逻辑，类似于AOP，即Wrapper代理了扩展点。
 
 #### 扩展点自适应
 
@@ -113,6 +116,39 @@ private Map<String, IllegalStateException> exceptions = new ConcurrentHashMap<>(
   - @Activate  //无条件自动激活
   - @Activate("xx")  //当配置了xx参数，且参数为有效值时激活
   - @Activate(group="provider", value="xx") //只对提供方激活，group可选“provider” 或“consumer”
+
+#### @Adaptive
+
+- 可以作用在类或者方法。
+  - 标记在类上， 标识手动实现它是一个扩展接口的Adaptive扩展实现类，目前，只有ExtensionFactory扩展实现类AdaptiveExtensionFactory.
+  - 标记在扩展接口的方法上， 标识自动生成代码实现该接口的Adaptive扩展实现类
+    - 自适应扩展实现类，会获取扩展名对应的真正的扩展实例。通过该实例，执行真正的逻辑。
+    - 可以设置多个键名(Key)，顺序获取直到有值。若最终获取不到，使用默认扩展名。
+- 一个扩展接口，有且只有一个Adaptive扩展实现类。
+
+#### @Activate
+
+- 自动激活条件的标识
+- 用于配置扩展被自动激活加载条件。例如，Filter扩展有多个实现，使用@Activate的扩展可以根据条件自动加载。
+
+#### ExtensionFactory
+
+- 自身也是扩展接口，基于Dubbo SPI加载具体扩展实现类。
+- 实现有：SpiExtensionFactory，SpringExtensionFactory, AdaptiveExtensionFactory。
+
+##### AdaptiveExtensionFactory
+
+自适应ExtensionFactory扩展实现类。
+
+##### SpiExtensionFactory
+
+##### SpringExtensionFactory
+
+
+
+
+
+
 
 
 
