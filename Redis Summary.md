@@ -3,7 +3,6 @@
 ## 数据结构
 
 #### SDS 字符串
-
 ```c
 typedef char *sds;
 struct __attribute__ ((__packed__)) sdshdr64 {   
@@ -16,7 +15,7 @@ struct __attribute__ ((__packed__)) sdshdr64 {
 Redis 操作的时候，根据 char 的指针，定位到 `sdshdr` 结构体的地址，从而获取其他信息来操作 SDS。所以 redis 中定义 char 指针的别名为 SDS。
 #### Summary
 - Redis 通常只用 C 字符串作字符串常量。大部分情况下，使用 SDS (Simple Dynamic String) 来表示字符串值
-- SDS 在数组扩容时使用容量预分配（额外多申请些空间），并冗余了长度与未使用字节数信息
+- SDS 在数组扩容时使用容量**预分配**（额外多申请些空间），并冗余了长度与未使用字节数信息
 - SDS 的优点如下：
   - 冗余了长度信息，`strlen` 的时间复杂度从 **O(N)** 变为 **O(1)**
   - 提供的 API 负责了对空间申请的操作，杜绝了缓冲区溢出
@@ -54,7 +53,6 @@ typedef struct list {
 - 可以给链表设置不同类型的函数（接口概念，列表结构上存操作函数的指针），来保存不同类型的值。不仅仅是链表，大部分 redis 中的数据结构都采取这样的设计
 
 ### 字典
-
 ```c
 typedef struct dictEntry {    
     void *key;    
@@ -79,14 +77,13 @@ typedef struct dictht {
 typedef struct dict {   
     dictType *type;   
     void *privdata;  
-    dictht ht[2];  
+    dictht ht[2];   
     long rehashidx; /* rehashing not in progress if rehashidx == -1 */   
     int iterators; /* number of iterators currently running */
 } dict;
 ```
 
 #### Summary
-
 - 字典中有两个哈希表，一个用来平时使用，一个用来 rehash 时使用
 - 哈希算法为 MurmurHash2 算法或 DJB hash 算法，然后保留后若干位（通过掩码与操作来快速计算）
 - 用链地址法来解决 hash 冲突
@@ -98,12 +95,11 @@ typedef struct dict {
   - serverCron，当有子进程时不进行 rehash；无子进程时，每次对于设定数量个 db 进行缩容或扩容操作（这里是 rehash 一定的时间，而不是一个 hash 值）
 
 ### 跳跃表 skiplist
-
 ```c
 /* ZSETs use a specialized version of Skiplists */
 typedef struct zskiplistNode {    
     robj *obj;   
-    double score; 
+    double score;  // zset 
     struct zskiplistNode *backward;  
     struct zskiplistLevel {    
         struct zskiplistNode *forward;  
@@ -134,7 +130,6 @@ typedef struct zset {
   - Redis 跳表中用来排序的是 score，还存了实际的对象 obj
 
 ### 整数集合 intset
-
 ```c
 // 总共有三种 encoding
 /* Note that these encodings are ordered, so: 
@@ -150,28 +145,24 @@ typedef struct intset {
 ```
 
 #### Summary
-
 - 整数集合通过一个编码类型（标明数组存储类型）和一个有序数组来实现
 - 数据类型在使用过程中如果需要会自动升级，但是不会自动降级
 - 集合数据结构的实现之一，当一个结合只包含整数类型并且数量不多的时候，redis 用整数集合来存储
 
 ### 压缩列表 ziplist
-
 ```
 zlbytes | zltail | zllen | entry1 | entry2 | ... | entryN | zlend
 ```
 
 #### Summary
-
 - 压缩列表是列表键和哈希键的底层实现之一，当列表只含小整数或较短字符串的时候，才会使用
 - 压缩列表本质就是「不定长元素」的数组，用数组来模拟链表
 - 不定长元素根据需要用能刚好存储的元素，充分节约内存
-- 每个节点存储自己的编码类型、内容，和上个节点的长度（方便反序遍历）
-- 存储各个数据的长度会根据需要动态改变（和变长字符编码设计类似）
+- 每个节点存储自己的**编码类型**、内容，和上个节点的长度（方便反序遍历）
+- 存储各个数据的长度会根据需要动态改变（和变长字符编码设计类似） 
 - 添加删除节点可能会导致连锁更新（上个节点长度字段连锁扩容），但是概率不大，一般不会影响性能
 
 ### 对象
-
 ```c
 typedef struct redisObject {  
     unsigned type:4; 
@@ -183,7 +174,6 @@ typedef struct redisObject {
 ```
 
 #### Summary
-
 - Redis 有字符串、列表、哈希、集合、有序集合5种数据类型
   - REDIS_STRING，编码是整数数值或 SDS 类型（和 embstr 字符串，将 SDS 与 redisObject 紧挨着申请内存空间，一种优化，缓存友好，当字符串长度小于等于32时用）
   - REDIS_LIST，编码是 ziplist 或 linkedlist。所有字符串长度小于 *list-max-ziplist-value (64)*，元素数量少于 *list-max-ziplist-entries (512)* 时使用 ziplist
@@ -199,7 +189,6 @@ typedef struct redisObject {
 ## 单机数据库
 
 ### 数据库
-
 ``` c
 struct redisServer {    
     redisDb *db;				/* Array of dbs */    
@@ -219,7 +208,6 @@ typedef struct redisDb {
 ```
 
 #### Summary
-
 - Redis 有多个数据库，每个数据库相互隔离
 - 数据库的键值都存在 dict 字典中；带过期时间的 key，过期信息存在 expires 字典中
 - 对 key 设置过期时间，相对与绝对时间都会转为绝对时间保存（PEXPIREAT 实现）
@@ -231,7 +219,6 @@ typedef struct redisDb {
 - 主服务器 key 过期后，会向所有从服务器发送一条 DEL 命令；从服务器不会主动删除过期 key，而是等待主服务器的 DEL 命令（从服务器没有惰性删除，导致有可能会获取到已经过期的 key，在 3.2 版本中[修复了这个问题](https://github.com/antirez/redis/issues/1768)，虽然不惰性删除，但是假如 key 过期了，不返回该 key）
 
 ### 持久化
-
 ```c
 struct redisServer {  
     long long dirty;                /* Changes to DB from the last save */  
@@ -241,7 +228,6 @@ struct redisServer {
 ```
 
 #### Summary
-
 - Redis 有两种持久化方式 RDB (Redis Dump Binary?) 和 AOF (Append Only File)
 - RDB 数据跟紧致，但及时性不如 AOF
 - Redis 启动时恢复状态，优先载入 AOF 文件，只有没有开 AOF 持久化时，才通过 RDB 恢复（因为 AOF 及时性更好）。加载过程中服务阻塞
@@ -261,7 +247,6 @@ struct redisServer {
 - BRREWRITEAOF 执行期间，其他 BGSAVE 命令和 BGREWRITEAOF 命令会被拒绝
 
 ### 事件循环（aeEvent 框架）
-
 ```c
 void aeMain(aeEventLoop *eventLoop) { 
     eventLoop->stop = 0;  
@@ -274,7 +259,6 @@ void aeMain(aeEventLoop *eventLoop) {
 ```
 
 #### Summary
-
 - Redis 基于 reactor 模式，使用 IO 多路复用来处理事件
 - Redis 有两种类型时间：文件事件、时间事件
 - Redis 基于 select/poll/kqueue 封装了自己的 aeEvent 处理框架，使得上层 API 一致
@@ -290,7 +274,6 @@ void aeMain(aeEventLoop *eventLoop) {
 ### 客户端/服务器
 
 #### Summary
-
 - 客户端在服务器中使用一个 clients 的链表结构存储多个客户端状态，新增客户端将增加到链表的末尾
 - 客户端输入缓冲区记录了客户端命令，该缓冲区大小不能超过 1 GB
 - 客户端输出缓冲区，分为固定大小和可变大小。并且有硬限制和软限制两类，超过硬限制或者超过软限制一定时间，客户端会被关闭
@@ -305,7 +288,6 @@ void aeMain(aeEventLoop *eventLoop) {
 ### 复制
 
 #### Summary
-
 - Redis 的复制分为同步（sync）和命令传播（command propagate）
 - 旧版本中，每次同步（断线后）都使用完全同步；新版中首次使用完全同步，之后使用部分同步，如果部分同步失败，则退化为完全同步
 - 复制过程（完全同步 SYNC）
