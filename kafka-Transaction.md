@@ -139,7 +139,7 @@ https://cwiki.apache.org/confluence/display/KAFKA/KIP-98+-+Exactly+Once+Delivery
 
 ### Questions
 
-### 如果多个 Producer 使用同一个 txn.id 会出现什么情况？
+#### 如果多个 Producer 使用同一个 txn.id 会出现什么情况？
 
 对于这个情况，我们这里直接做了一个相应的实验，两个 Producer 示例都使用了同一个 txn.id（为 test-transactional-matt），Producer 1 先启动，然后过一会再启动 Producer 2，这时候会发现一个现象，那就是 Producer 1 进程会抛出异常退出进程，其异常信息为：
 
@@ -155,7 +155,7 @@ org.apache.kafka.common.KafkaException: Cannot execute transactional method beca
 
 Producer 1 本地事务状态从 COMMITTING_TRANSACTION 变成了 FATAL_ERROR 状态，导致 Producer 进程直接退出了，出现这个异常的原因，就是抛出的 ProducerFencedException 异常，简单来说 Producer 1 被 Fencing 了（这是 Producer Fencing 的情况）。因此，这个问题的答案就很清除了，如果多个 Producer 共用一个 txn.id，那么最后启动的 Producer 会成功运行，会它之前启动的 Producer 都 Fencing 掉（至于为什么会 Fencing 下一小节会做分析）。
 
-### Fencing
+#### Fencing
 
 关于 Fencing 这个机制，在分布式系统还是很常见的，我第一个见到这个机制是在 HDFS 中，可以参考我之前总结的一篇文章 [HDFS NN 脑裂问题](http://matt33.com/2018/07/15/hdfs-architecture-learn/#HDFS-脑裂问题)，Fencing 机制解决的主要也是这种类型的问题 —— 脑裂问题，简单来说就是，本来系统这个组件在某个时刻应该只有一个处于 active 状态的，但是在实际生产环境中，特别是切换期间，可能会同时出现两个组件处于 active 状态，这就是脑裂问题，在 Kafka 的事务场景下，用到 Fencing 机制有两个地方：
 
@@ -174,7 +174,7 @@ TransactionCoordinator 在遇到上 long FGC 时，可能会导致 脑裂 问题
 
 Producer Fencing 与前面的类似，如果对于相同 PID 和 txn.id 的 Producer，Server 端会记录最新的 Epoch 值，拒绝来自 zombie Producer （Epoch 值小的 Producer）的请求。前面第一个问题的情况，Producer 2 在启动时，会向 TransactionCoordinator 发送 InitPIDRequest 请求，此时 TransactionCoordinator 已经有了这个 txn.id 对应的 meta，会返回之前分配的 PID，并把 Epoch 自增 1 返回，这样 Producer 2 就被认为是最新的 Producer，而 Producer 1 就会被认为是 zombie Producer，因此，TransactionCoordinator 在处理 Producer 1 的事务请求时，会返回相应的异常信息。
 
-### Consumer 端如何消费事务数据
+#### Consumer 端如何消费事务数据
 
 在讲述这个问题之前，需要先介绍一下事务场景下，Consumer 的消费策略，Consumer 有一个 `isolation.level` 配置，这个是配置对于事务性数据的消费策略，有以下两种可选配置：
 
@@ -209,9 +209,9 @@ Producer Fencing 与前面的类似，如果对于相同 PID 和 txn.id 的 Prod
 
 #### Consumer 如何过滤 abort 的事务数据
 
-Consumer 在拉取到相应的数据之后，后面该怎么处理呢？它拉取到的这批数据并不能保证都是完整的事务数据，很有可能是拉取到一个事务的部分数据（marker 数据还没有拉取到），这时候应该怎么办？难道 Consumer 先把这部分数据缓存下来，等后面的 marker 数据到来时再确认数据应该不应该丢弃？（还是又 OOM 的风险）有没有更好的实现方案？
+Consumer 在拉取到相应的数据之后，后面该怎么处理呢？它拉取到的这批数据并不能保证都是完整的事务数据，很有可能是拉取到一个事务的部分数据（marker 数据还没有拉取到），这时候应该怎么办？难道 Consumer 先把这部分数据缓存下来，等后面的 marker 数据到来时再确认数据应该不应该丢弃？（还是又OOM 的风险）有没有更好的实现方案？
 
-Kafka 的设计总是不会让我们失望，这部分做的优化也是非常高明，Broker 会追踪每个 Partition 涉及到的 abort transactions，Partition 的每个 log segment 都会有一个单独只写的文件（append-only file）来存储 abort transaction 信息，因为 abort transaction 并不是很多，所以这个开销是可以可以接受的，之所以要持久化到磁盘，主要是为了故障后快速恢复，要不然 Broker 需要把这个 Partition 的所有数据都读一遍，才能直到哪些事务是 abort 的，这样的话，开销太大（如果这个 Partition 没有事务操作，就不会生成这个文件）。这个持久化的文件是以 `.txnindex` 做后缀，前面依然是这个 log segment 的 offset 信息，存储的数据格式如下：
+Kafka 的设计总是不会让我们失望，这部分做的优化也是非常高明，Broker 会追踪每个 Partition 涉及到的 abort transactions，**Partition 的每个 log segment 都会有一个单独只写的文件（append-only file）来存储 abort transaction 信息**，因为 abort transaction 并不是很多，所以这个开销是可以可以接受的，之所以要持久化到磁盘，主要是为了故障后快速恢复，要不然 Broker 需要把这个 Partition 的所有数据都读一遍，才能直到哪些事务是 abort 的，这样的话，开销太大（如果这个 Partition 没有事务操作，就不会生成这个文件）。这个持久化的文件是以 `.txnindex` 做后缀，前面依然是这个 log segment 的 offset 信息，存储的数据格式如下：
 
 ```
 TransactionEntry =>    Version => int16    PID => int64    FirstOffset => int64    LastOffset => int64    LastStableOffset => int64
@@ -219,8 +219,17 @@ TransactionEntry =>    Version => int16    PID => int64    FirstOffset => int64 
 
 有了这个设计，Consumer 在拉取数据时，Broker 会把这批数据涉及到的所有 abort transaction 信息都返回给 Consumer，Server 端会根据拉取的 offset 范围与 abort transaction 的 offset 做对比，返回涉及到的 abort transaction 集合，其实现如下：
 
-```
-def collectAbortedTxns(fetchOffset: Long, upperBoundOffset: Long): TxnIndexSearchResult = {  val abortedTransactions = ListBuffer.empty[AbortedTxn]  for ((abortedTxn, _) <- iterator()) {    if (abortedTxn.lastOffset >= fetchOffset && abortedTxn.firstOffset < upperBoundOffset)      abortedTransactions += abortedTxn //note: 这个 abort 的事务有在在这个范围内，就返回    if (abortedTxn.lastStableOffset >= upperBoundOffset)      return TxnIndexSearchResult(abortedTransactions.toList, isComplete = true)  }  TxnIndexSearchResult(abortedTransactions.toList, isComplete = false)}
+```scala
+def collectAbortedTxns(fetchOffset: Long, upperBoundOffset: Long): 
+TxnIndexSearchResult = {  
+    val abortedTransactions = ListBuffer.empty[AbortedTxn]  
+    for ((abortedTxn, _) <- iterator()) {    
+        if (abortedTxn.lastOffset >= fetchOffset && abortedTxn.firstOffset < upperBoundOffset)      
+        abortedTransactions += abortedTxn //note: 这个 abort 的事务有在在这个范围内，就返回    if (abortedTxn.lastStableOffset >= upperBoundOffset)      
+        return TxnIndexSearchResult(abortedTransactions.toList, isComplete = true)  
+    }  
+    TxnIndexSearchResult(abortedTransactions.toList, isComplete = false)
+}
 ```
 
 Consumer 在拿到这些数据之后，会进行相应的过滤，大概的判断逻辑如下（Server 端返回的 abort transaction 列表就保存在 `abortedTransactions` 集合中，`abortedProducerIds` 最开始时是为空的）：
@@ -236,21 +245,80 @@ Consumer 在拿到这些数据之后，会进行相应的过滤，大概的判�
 
 这部分代码实现如下：
 
-```
-private Record nextFetchedRecord() {    while (true) {        if (records == null || !records.hasNext()) { //note: records 为空（数据全部丢掉了），records 没有数据（是 control msg）            maybeCloseRecordStream();            if (!batches.hasNext()) {                // Message format v2 preserves the last offset in a batch even if the last record is removed                // through compaction. By using the next offset computed from the last offset in the batch,                // we ensure that the offset of the next fetch will point to the next batch, which avoids                // unnecessary re-fetching of the same batch (in the worst case, the consumer could get stuck                // fetching the same batch repeatedly).                if (currentBatch != null)                    nextFetchOffset = currentBatch.nextOffset();                drain();                return null;            }            currentBatch = batches.next();            maybeEnsureValid(currentBatch);            if (isolationLevel == IsolationLevel.READ_COMMITTED && currentBatch.hasProducerId()) {                //note: 需要做相应的判断                // remove from the aborted transaction queue all aborted transactions which have begun                // before the current batch's last offset and add the associated producerIds to the                // aborted producer set                //note: 如果这个 batch 的 offset 已经大于等于 abortedTransactions 中第一事务的 first offset                //note: 那就证明下个 abort transaction 的数据已经开始到来，将 PID 添加到 abortedProducerIds 中                consumeAbortedTransactionsUpTo(currentBatch.lastOffset());                long producerId = currentBatch.producerId();                if (containsAbortMarker(currentBatch)) {                    abortedProducerIds.remove(producerId); //note: 这个 PID（当前事务）涉及到的数据已经处理完                } else if (isBatchAborted(currentBatch)) { //note: 丢弃这个数据                    log.debug("Skipping aborted record batch from partition {} with producerId {} and " +                                  "offsets {} to {}",                              partition, producerId, currentBatch.baseOffset(), currentBatch.lastOffset());                    nextFetchOffset = currentBatch.nextOffset();                    continue;                }            }            records = currentBatch.streamingIterator(decompressionBufferSupplier);        } else {            Record record = records.next();            // skip any records out of range            if (record.offset() >= nextFetchOffset) {                // we only do validation when the message should not be skipped.                maybeEnsureValid(record);                // control records are not returned to the user                if (!currentBatch.isControlBatch()) { //note: 过滤掉 marker 数据                    return record;                } else {                    // Increment the next fetch offset when we skip a control batch.                    nextFetchOffset = record.offset() + 1;                }            }        }    }}
+```java
+private Record nextFetchedRecord() {
+    while (true) {
+        if (records == null || !records.hasNext()) { //note: records 为空（数据全部丢掉了），records 没有数据（是 control msg）
+            maybeCloseRecordStream();
+
+            if (!batches.hasNext()) {
+                // Message format v2 preserves the last offset in a batch even if the last record is removed
+                // through compaction. By using the next offset computed from the last offset in the batch,
+                // we ensure that the offset of the next fetch will point to the next batch, which avoids
+                // unnecessary re-fetching of the same batch (in the worst case, the consumer could get stuck
+                // fetching the same batch repeatedly).
+                if (currentBatch != null)
+                    nextFetchOffset = currentBatch.nextOffset();
+                drain();
+                return null;
+            }
+
+            currentBatch = batches.next();
+            maybeEnsureValid(currentBatch);
+
+            if (isolationLevel == IsolationLevel.READ_COMMITTED && currentBatch.hasProducerId()) {
+                //note: 需要做相应的判断
+                // remove from the aborted transaction queue all aborted transactions which have begun
+                // before the current batch's last offset and add the associated producerIds to the
+                // aborted producer set
+                //note: 如果这个 batch 的 offset 已经大于等于 abortedTransactions 中第一事务的 first offset
+                //note: 那就证明下个 abort transaction 的数据已经开始到来，将 PID 添加到 abortedProducerIds 中
+                consumeAbortedTransactionsUpTo(currentBatch.lastOffset());
+
+                long producerId = currentBatch.producerId();
+                if (containsAbortMarker(currentBatch)) {
+                    abortedProducerIds.remove(producerId); //note: 这个 PID（当前事务）涉及到的数据已经处理完
+                } else if (isBatchAborted(currentBatch)) { //note: 丢弃这个数据
+                    log.debug("Skipping aborted record batch from partition {} with producerId {} and " +
+                                  "offsets {} to {}",
+                              partition, producerId, currentBatch.baseOffset(), currentBatch.lastOffset());
+                    nextFetchOffset = currentBatch.nextOffset();
+                    continue;
+                }
+            }
+
+            records = currentBatch.streamingIterator(decompressionBufferSupplier);
+        } else {
+            Record record = records.next();
+            // skip any records out of range
+            if (record.offset() >= nextFetchOffset) {
+                // we only do validation when the message should not be skipped.
+                maybeEnsureValid(record);
+
+                // control records are not returned to the user
+                if (!currentBatch.isControlBatch()) { //note: 过滤掉 marker 数据
+                    return record;
+                } else {
+                    // Increment the next fetch offset when we skip a control batch.
+                    nextFetchOffset = record.offset() + 1;
+                }
+            }
+        }
+    }
+}
 ```
 
-### Consumer 消费数据时，其顺序如何保证
+#### Consumer 消费数据时，其顺序如何保证
 
 有了前面的分析，这个问题就很好回答了，顺序性还是严格按照 offset 的，只不过遇到 abort trsansaction 的数据时就丢弃掉，其他的与普通 Consumer 并没有区别。
 
-### 如果 txn.id 长期不使用，server 端怎么处理？
+#### 如果 txn.id 长期不使用，server 端怎么处理？
 
 Producer 在开始一个事务操作时，可以设置其事务超时时间（参数是 `transaction.timeout.ms`，默认60s），而且 Server 端还有一个最大可允许的事务操作超时时间（参数是 `transaction.timeout.ms`，默认是15min），Producer 设置超时时间不能超过 Server，否则的话会抛出异常。
 
 上面是关于事务操作的超时设置，而对于 txn.id，我们知道 TransactionCoordinator 会缓存 txn.id 的相关信息，如果没有超时机制，这个 meta 大小是无法预估的，Server 端提供了一个 `transaction.id.expiration.ms` 参数来配置这个超时时间（默认是7天），如果超过这个时间没有任何事务相关的请求发送过来，那么 TransactionCoordinator 将会使这个 txn.id 过期。
 
-### PID Snapshot 是做什么的？用来解决什么问题？
+#### PID Snapshot 是做什么的？用来解决什么问题？
 
 对于每个 Topic-Partition，Broker 都会在内存中维护其 PID 与 sequence number（最后成功写入的 msg 的 sequence number）的对应关系（这个在上面幂等性文章应讲述过，主要是为了不丢补充的实现）。
 
@@ -264,19 +332,13 @@ Broker 重启时，如果想恢复上面的状态信息，那么它读取所有�
 
 在实际的使用中，这个 snapshot 文件一般只会保存最近的两个文件。
 
-### 中间流程故障如何恢复
+#### 中间流程故障如何恢复
 
 对于上面所讲述的一个事务操作流程，实际生产环境中，任何一个地方都有可能出现的失败：
-
 1. Producer 在发送 `beginTransaction()` 时，如果出现 timeout 或者错误：Producer 只需要重试即可；
 2. Producer 在发送数据时出现错误：Producer 应该 abort 这个事务，如果 Produce 没有 abort（比如设置了重试无限次，并且 batch 超时设置得非常大），TransactionCoordinator 将会在这个事务超时之后 abort 这个事务操作；
 3. Producer 发送 `commitTransaction()` 时出现 timeout 或者错误：Producer 应该重试这个请求；
 4. Coordinator Failure：如果 Transaction Coordinator 发生切换（事务 topic leader 切换），Coordinator 可以从日志中恢复。如果发送事务有处于 PREPARE_COMMIT 或 PREPARE_ABORT 状态，那么直接执行 commit 或者 abort 操作，如果是一个正在进行的事务，Coordinator 的失败并不需要 abort 事务，producer 只需要向新的 Coordinator 发送请求即可。
-
-
-
 ### Tips
-
 - Compaction Topic.   
-
 默认的删除规则之外，提供了另外一种删除过期数据的策略:对于相关key的不同数据，只保留最后一条数据。
