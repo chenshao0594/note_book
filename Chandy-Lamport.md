@@ -10,5 +10,10 @@
 - 有限进程
 - 进程之间的channel
 
+Global State的组成部分
+
+- 进程的状态
+- channel中的Message
+
 
 
