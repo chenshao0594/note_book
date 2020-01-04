@@ -13,3 +13,24 @@
 - 佣金宝的架构图
 - jvm引入多种引用解决什么问题？
 - G1的rememberset
+- 标记-整理会触发 Stop The World 吗
+- 什么情况下触发mirror GC
+- 新建的字符串会存到哪
+- 通过什么方式来判断是否回收
+- 哪些对象可以当 GC root
+- 虚拟机栈的对象为什么能当 root
+- Exception 和 Error 的区别
+- 上下文切换
+- zookeeper watcher设计的初衷（为什么需要每次watch）
+- 零拷贝
+- 线程的生命周期
+- redis高效的原因
+- redis 分布式锁
+- java线程与OS线程区别
+- spring的事务
+- jvm的垃圾回收
+- zab协议选举
+- kafka controller用处
+- 提高系统稳定性手段
+- B树索引和hash索引区别
+- 聚簇索引和非聚簇索引
