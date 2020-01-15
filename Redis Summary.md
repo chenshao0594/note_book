@@ -70,10 +70,10 @@ typedef struct dictEntry {
 typedef struct dictht {    
     dictEntry **table;    
     unsigned long size;   
-    unsigned long sizemask;   
+    unsigned long sizemask;   //table.size-1
     unsigned long used;
 } dictht;
-
+//字典数据结构
 typedef struct dict {   
     dictType *type;   
     void *privdata;  
@@ -491,6 +491,3 @@ typedef struct slowlogEntry {
 - lua 脚本命令是原子性的，有执行超时时间
 - lua 脚本需要满足「纯函数脚本」要求。即同样的输入要求输出相同。简单的说，在 Redis 服务器中执行的 lua 脚本不能随意使用随机函数
 
-## 参考链接
-
-- Raft 协议：http://thesecretlivesofdata.com/raft/
