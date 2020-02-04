@@ -128,13 +128,9 @@ https://cwiki.apache.org/confluence/display/KAFKA/KIP-98+-+Exactly+Once+Delivery
       1. 更新事务的 meta 信息，状态转移成 PREPARE_COMMIT 或 PREPARE_ABORT，并将事务状态信息持久化到事务日志中；
       2. 根据事务 meta 信息，向其涉及到的所有 Topic-Partition 的 leader 发送 Transaction Marker 信息（也就是 WriteTxnMarkerRquest 请求，见下面的 2 分析）；
       3. 最后将事务状态更新为 COMMIT 或者 ABORT，并将事务的 meta 持久化到事务日志中，也就是 5.3 步骤。
-
    2. WriteTxnMarkerRequest
-
       WriteTxnMarkerRquest 是 TransactionCoordinator 收到 Producer 的 EndTxnRequest 请求后向其他 Broker 发送的请求，主要是告诉它们事务已经完成。不论是普通的 Topic-Partition 还是 `__consumer_offsets`，在收到这个请求后，都会把事务结果（Transaction Marker 的格数据式见前面）持久化到对应的日志文件中，这样下游 Consumer 在消费这个数据时，就知道这个事务是 commit 还是 abort。
-
    3. Writing the Final Commit or Abort Message
-
       当这个事务涉及到所有 Topic-Partition 都已经把这个 marker 信息持久化到日志文件之后，TransactionCoordinator 会将这个事务的状态置为 COMMIT 或 ABORT，并持久化到事务日志文件中，到这里，这个事务操作就算真正完成了，TransactionCoordinator 缓存的很多关于这个事务的数据可以被清除了。
 
 ### Questions
