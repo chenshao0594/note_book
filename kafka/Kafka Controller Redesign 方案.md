@@ -1,19 +1,19 @@
-Kafka Controller 是 Kafka 的核心组件，在前面的文章中，已经详细讲述过 Controller 部分的内容。在过去的几年根据大家在生产环境中应用的反馈，Controller 也积累了一些比较大的问题，而针对这些问题的修复，代码的改动量都是非常大的，无疑是一次重构，因此，社区准备在新版的系统里对 Controller 做一些相应的优化（0.11.0及以后的版本），相应的设计方案见：[Kafka Controller Redesign](https://docs.google.com/document/d/1rLDmzDOGQQeSiMANP0rC2RYp_L7nUGHzFD9MQISgXYM/edit#heading=h.pxfjarumuhko)，本文的内容就是结合这篇文章做一个简单的总结。   
+ Kafka Controller 是 Kafka 的核心组件，在前面的文章中，已经详细讲述过 Controller 部分的内容。在过去的几年根据大家在生产环境中应用的反馈，Controller 也积累了一些比较大的问题，而针对这些问题的修复，代码的改动量都是非常大的，无疑是一次重构，因此，社区准备在新版的系统里对 Controller 做一些相应的优化（0.11.0及以后的版本），相应的设计方案见：[Kafka Controller Redesign](https://docs.google.com/document/d/1rLDmzDOGQQeSiMANP0rC2RYp_L7nUGHzFD9MQISgXYM/edit#heading=h.pxfjarumuhko)，本文的内容就是结合这篇文章做一个简单的总结。   
  ## Controller 功能 
  在一个 Kafka 中，Controller 要处理的事情总结如下表所示：   
-| 功能| 详情 | 
-| -----| ----- | 
- | cluster metadata updates | producer 或 consumer 可以通过 MetadataRequest 请求从集群任何一台 broker 上查询到某个 Partition 的 metadata 信息，如果一个 Partition 的 leader 或 isr 等信息变化，Controller 会广播到集群的所有 broker 上，这样每台 Broker 都会有该 Partition 的最新 Metadata 信息 | 
- | topic creation | 用户可以通过多种方式创建一个 topic，最终的结果都是在 zk 的 /brokers/topics 目录下新建一个 topic 节点信息，controller 通过监控这个目录来判断是否有新的 topic 需要创建 | 
- | topic deletion | Controller 通过监控 zk 的 /admin/delete_topics 节点来触发 topic 删除操作 | 
- | partition reassignment | Controller 通过监控 zk 的 /admin/reassign_partitions 节点来触发 Partition 的副本迁移操作 | 
- | preferred replica leader election | Controller 通过监控 zk 的 /admin/preferred_replica_election 节点来触发最优 leader 选举操作，该操作的目的选举 Partition 的第一个 replica 作为 leader | 
- | topic partition expansion | Controller 通过监控 zk 的 /brokers/topics/<topic> 数据内容的变化，来触发 Topic 的 Partition 扩容操作 | 
- | broker join | Controller 通过监控 zk 的 /brokers/ids 目录变化，就会知道哪些 broker 是最新加入的，进而触发 broker 的上线操作 | 
- | broker failure | 同样，Controller 通过监控 zk 的 /brokers/ids 目录变化，就会知道哪些 broker 掉线了，进而触发 broker 的下线操作 |  | 
- | controlled shutdown | Controller 通过处理 ControlledShudownRequest 请求来优雅地关闭一个 broker 节点，主动关闭与直接 kill 的区别，它可以减少 Partition 的不可用时间，因为一个 broker 的 zk 临时节点消失是需要一定时间的 | 
- | controller leader election | 集群中所有 broker 会监听 zk 的 /controller 节点，如果该节点消失，所有的 broker 都回去抢占 controller 节点，抢占成功的，就成了最新的 controller | 
- 
+| 功能| 详情 |
+| -----| ----- |
+| cluster metadata updates | producer 或 consumer 可以通过 MetadataRequest 请求从集群任何一台 broker 上查询到某个 Partition 的 metadata 信息，如果一个 Partition 的 leader 或 isr 等信息变化，Controller 会广播到集群的所有 broker 上，这样每台 Broker 都会有该 Partition 的最新 Metadata 信息 |
+| topic creation | 用户可以通过多种方式创建一个 topic，最终的结果都是在 zk 的 /brokers/topics 目录下新建一个 topic 节点信息，controller 通过监控这个目录来判断是否有新的 topic 需要创建 |
+| topic deletion | Controller 通过监控 zk 的 /admin/delete_topics 节点来触发 topic 删除操作 |
+| partition reassignment | Controller 通过监控 zk 的 /admin/reassign_partitions 节点来触发 Partition 的副本迁移操作 |
+| preferred replica leader election | Controller 通过监控 zk 的 /admin/preferred_replica_election 节点来触发最优 leader 选举操作，该操作的目的选举 Partition 的第一个 replica 作为 leader |
+| topic partition expansion | Controller 通过监控 zk 的 /brokers/topics/<topic> 数据内容的变化，来触发 Topic 的 Partition 扩容操作 |
+| broker join | Controller 通过监控 zk 的 /brokers/ids 目录变化，就会知道哪些 broker 是最新加入的，进而触发 broker 的上线操作 |
+| broker failure | 同样，Controller 通过监控 zk 的 /brokers/ids 目录变化，就会知道哪些 broker 掉线了，进而触发 broker 的下线操作 |  |
+| controlled shutdown | Controller 通过处理 ControlledShudownRequest 请求来优雅地关闭一个 broker 节点，主动关闭与直接 kill 的区别，它可以减少 Partition 的不可用时间，因为一个 broker 的 zk 临时节点消失是需要一定时间的 |
+| controller leader election | 集群中所有 broker 会监听 zk 的 /controller 节点，如果该节点消失，所有的 broker 都回去抢占 controller 节点，抢占成功的，就成了最新的 controller |
+
  ## Controller 目前存在的问题 
  之所以要重新设计 Controller，是因为现在的 Controller 积累了一些比较难解决的问题，这些问题解决起来，代码改动量都是巨大的，甚至需要改变 controller 部门的设计，基本就跟重构差不多了，下面我们先来了看一下 controller 之前（主要是 0.11.0 之前的版本）存在的一些问题。   目前遇到的比较大的问题有以下几个：    
  - Partition 级别同步 zk 写； 

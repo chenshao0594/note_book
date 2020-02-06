@@ -77,13 +77,13 @@ producer.close();
 </blockquote> 下面这节就讲述一下事务性实现的一些关键的实现机制（对这些细节不太感兴趣或者之前没有深入接触过 Kafka，可以直接跳过，直接去看下一节的事务流程处理，先去了解一下一个事务操作的主要流程步骤）。   
  ### TransactionCoordinator 
  TransactionCoordinator 与 GroupCoordinator 有一些相似之处，它主要是处理来自 Transactional Producer 的一些与事务相关的请求，涉及的请求如下表所示（关于这些请求处理的详细过程会在下篇文章详细讲述，这里先有个大概的认识即可）：   
-| 请求类型| 用途说明 | 
-| -----| ----- | 
- | ApiKeys.FIND_COORDINATOR | Transaction Producer 会发送这个 FindCoordinatorRequest 请求，来查询当前事务（txn.id）对应的 TransactionCoordinator，这个与 GroupCoordinator 查询类似，是根据 txn.id 的 hash 值取模找到对应 Partition 的 leader，这个 leader 就是该事务对应的 TransactionCoordinator | 
- | ApiKeys.INIT_PRODUCER_ID | Producer 初始化时，会发送一个 InitProducerIdRequest 请求，来获取其分配的 PID 信息，对于幂等性的 Producer，会随机选择一台 broker 发送请求，而对于 Transaction Producer 会选择向其对应的 TransactionCoordinator 发送该请求（目的是为了根据 txn.id 对应的事务状态做一些判断） | 
- | ApiKeys.ADD_PARTITIONS_TO_TXN | 将这个事务涉及到的 topic-partition 列表添加到事务的 meta 信息中（通过 AddPartitionsToTxnRequest 请求），事务 meta 信息需要知道当前的事务操作涉及到了哪些 Topic-Partition 的写入 | 
- | ApiKeys.ADD_OFFSETS_TO_TXN | Transaction Producer 的这个 AddOffsetsToTxnRequest 请求是由 sendOffsetsToTransaction() 接口触发的，它主要是用在 consume-process-produce 的场景中，这时候 consumer 也是整个事务的一部分，只有这个事务 commit 时，offset 才会被真正 commit（主要还是用于 Failover） | 
- | ApiKeys.END_TXN | 当提交事务时， Transaction Producer 会向 TransactionCoordinator 发送一个 EndTxnRequest 请求，来 commit 或者 abort 事务 | 
+| 请求类型| 用途说明 |
+| -----| ----- |
+| ApiKeys.FIND_COORDINATOR | Transaction Producer 会发送这个 FindCoordinatorRequest 请求，来查询当前事务（txn.id）对应的 TransactionCoordinator，这个与 GroupCoordinator 查询类似，是根据 txn.id 的 hash 值取模找到对应 Partition 的 leader，这个 leader 就是该事务对应的 TransactionCoordinator |
+| ApiKeys.INIT_PRODUCER_ID | Producer 初始化时，会发送一个 InitProducerIdRequest 请求，来获取其分配的 PID 信息，对于幂等性的 Producer，会随机选择一台 broker 发送请求，而对于 Transaction Producer 会选择向其对应的 TransactionCoordinator 发送该请求（目的是为了根据 txn.id 对应的事务状态做一些判断） |
+| ApiKeys.ADD_PARTITIONS_TO_TXN | 将这个事务涉及到的 topic-partition 列表添加到事务的 meta 信息中（通过 AddPartitionsToTxnRequest 请求），事务 meta 信息需要知道当前的事务操作涉及到了哪些 Topic-Partition 的写入 |
+| ApiKeys.ADD_OFFSETS_TO_TXN | Transaction Producer 的这个 AddOffsetsToTxnRequest 请求是由 sendOffsetsToTransaction() 接口触发的，它主要是用在 consume-process-produce 的场景中，这时候 consumer 也是整个事务的一部分，只有这个事务 commit 时，offset 才会被真正 commit（主要还是用于 Failover） |
+| ApiKeys.END_TXN | 当提交事务时， Transaction Producer 会向 TransactionCoordinator 发送一个 EndTxnRequest 请求，来 commit 或者 abort 事务 |
  TransactionCoordinator 对象中还有两个关键的对象，分别是:    
  - TransactionStateManager：这个对象，从名字应该就能大概明白其作用是关于事务的状态管理，它会维护分配到这个 TransactionCoordinator 的所有事务的 meta 信息； 
  - TransactionMarkerChannelManager：这个主要是用于向其他的 Broker 发送 Transaction Marker 数据，关于 Transaction Marker，第一次接触的人，可能会有一些困惑，什么是 Transaction Marker，Transaction Marker 是用来解决什么问题的呢？这里先留一个疑问，后面会来解密。  总结一下，TransactionCoordinator 主要的功能有三个，分别是：    
@@ -109,7 +109,7 @@ Value => Version ProducerId ProducerEpoch TxnTimeoutDuration TxnStatus [TxnParti
     TxnLastUpdateTime => int64
     TxnStartTime => int64
 ```
- 
+
  ### Transaction Marker 
  终于讲到了 Transaction Marker，这也是前面留的一个疑问，什么是 Transaction Marker？Transaction Marker 是用来解决什么问题的呢？   Transaction Marker 也叫做 control messages，它的作用主要是告诉这个事务操作涉及的 Topic-Partition Set 的 leaders 当前的事务操作已经完成，可以执行 commit 或者 abort（Marker 主要的内容就是 commit 或 abort），这个 marker 数据由该事务的 TransactionCoordinator 来发送的。我们来假设一下：如果没有 Transaction Marker，一个事务在完成后，如何执行 commit 操作？（以这个事务涉及多个 Topic-Partition 写入为例）    
  - Transactional Producer 在进行 commit 时，需要先告诉 TransactionCoordinator 这个事务可以 commit 了（因为 TransactionCoordinator 记录这个事务对应的状态信息），然后再去告诉这些 Topic-Partition 的 leader 当前已经可以 commit，也就是 Transactional Producer 在执行 commit 时，至少需要做两步操作； 
@@ -139,19 +139,19 @@ TransactionControlMessageValue => Version CoordinatorEpoch
 ``` scala
 | Unused (1-7) | Control Flag(0) |
 ```
- 
+
  ### Server 端事务状态管理 
  TransactionCoordinator 会维护相应的事务的状态信息（也就是 TxnStatus），对于一个事务，总共有以下几种状态：   
-| 状态| 状态码| 说明 | 
-| -----| -----| ----- | 
- | Empty | 0 | Transaction has not existed yet | 
- | Ongoing | 1 | Transaction has started and ongoing | 
- | PrepareCommit | 2 | Group is preparing to commit | 
- | PrepareAbort | 3 | Group is preparing to abort | 
- | CompleteCommit | 4 | Group has completed commit | 
- | CompleteAbort | 5 | Group has completed abort | 
- | Dead | 6 | TransactionalId has expired and is about to be removed from the transaction cache | 
- | PrepareEpochFence | 7 | We are in the middle of bumping the epoch and fencing out older producers | 
+| 状态| 状态码| 说明 |
+| -----| -----| ----- |
+| Empty | 0 | Transaction has not existed yet |
+| Ongoing | 1 | Transaction has started and ongoing |
+| PrepareCommit | 2 | Group is preparing to commit |
+| PrepareAbort | 3 | Group is preparing to abort |
+| CompleteCommit | 4 | Group has completed commit |
+| CompleteAbort | 5 | Group has completed abort |
+| Dead | 6 | TransactionalId has expired and is about to be removed from the transaction cache |
+| PrepareEpochFence | 7 | We are in the middle of bumping the epoch and fencing out older producers |
  其相应有效的状态转移图如下：   
 ![Server 端 Transaction 的状态转移图](./images/kafka/server-txn.png)
    正常情况下，对于一个事务而言，其状态状态流程应该是 Empty –&gt; Ongoing –&gt; PrepareCommit –&gt; CompleteCommit –&gt; Empty 或者是 Empty –&gt; Ongoing –&gt; PrepareAbort –&gt; CompleteAbort –&gt; Empty。   
@@ -176,7 +176,7 @@ TransactionControlMessageValue => Version CoordinatorEpoch
 ``` scala
 def partitionFor(transactionalId: String): Int = Utils.abs(transactionalId.hashCode) % transactionTopicPartitionCount
 ```
- 
+
  ### 2. Getting a PID 
  PID 这里就不再介绍了，不了解的可以看前面那篇文章（[Producer ID](http://matt33.com/2018/10/24/kafka-idempotent/#PID)）。   Transaction Producer 在 initializeTransactions() 方法中会向 TransactionCoordinator 发送 InitPidRequest 请求获取其分配的 PID，有了 PID，事务写入时可以保证幂等性，PID 如何分配可以参考 [PID 分配](http://matt33.com/2018/10/24/kafka-idempotent/#Producer-PID-%E7%94%B3%E8%AF%B7)，但是 TransactionCoordinator 在给事务 Producer 分配 PID 会做一些判断，主要的内容是：    
  - 如果这个 txn.id 之前没有相应的事务状态（new txn.id），那么会初始化其事务 meta 信息 TransactionMetadata（会给其分配一个 PID，初始的 epoch 为-1），如果有事务状态，获取之前的状态； 
@@ -233,7 +233,7 @@ private def prepareInitProduceIdTransit(transactionalId: String,
   }
 }
 ```
- 
+
  ### 3. Starting a Transaction 
  前面两步都是 Transaction Producer 调用 initTransactions() 部分，到这里，Producer 可以调用 beginTransaction() 开始一个事务操作，其实现方法如下面所示：   
 ``` scala
@@ -600,7 +600,7 @@ private Record nextFetchedRecord() {
     }
 }
 ```
- 
+
  ### Consumer 消费数据时，其顺序如何保证 
  有了前面的分析，这个问题就很好回答了，顺序性还是严格按照 offset 的，只不过遇到 abort trsansaction 的数据时就丢弃掉，其他的与普通 Consumer 并没有区别。   
  ### 如果 txn.id 长期不使用，server 端怎么处理？ 

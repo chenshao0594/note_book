@@ -209,7 +209,7 @@ typedef struct redisDb {
 
 #### Summary
 - Redis 有多个数据库，每个数据库相互隔离
-- 数据库的键值都存在 dict 字典中；带过期时间的 key，过期信息存在 expires 字典中
+- 数据库的键值都存在 dict 字典中；带过期时间的 key，过期信息存在 expires 字典中；
 - 对 key 设置过期时间，相对与绝对时间都会转为绝对时间保存（PEXPIREAT 实现）
 - Redis 过期 key 删除策略
   - 惰性删除：获取 key 的时候，如果过期了删除。内存不友好，CPU 友好（读写之前会执行 expireIfNeeded）
@@ -241,7 +241,7 @@ struct redisServer {
   - 写入到 AOF 文件后不一定同步到磁盘，根据配置 *appendfsync* 是 always/everysec/no 来“每次事件循环/每秒/从不”来调用系统同步刷新到磁盘函数
   - 载入 AOF 是通过一个伪客户端执行 AOF 文件中的命令实现的
   - AOF 文件重写并不分析以前的文件，而是通过当前内存数据库状态生成
-  - AOF 重写期间可能会有新的命令，主进程将命令保存在 AOF 重写缓冲区中，当子进程完成工作后，主进程将缓冲区中的内容写入，并原子重命名新 AOF 文件替换原 AOF 文件
+  - AOF 重写期间可能会有新的命令，主进程将命令保存在 <code>AOF 重写缓冲区</code>中，当子进程完成工作后，主进程将缓冲区中的内容写入，并原子重命名新 AOF 文件替换原 AOF 文件
 - SAVE/BGSAVE 可以生成 RDB，BGSAVE fork 出一个子进程来生成 RDB 文件
 - BGSAVE 执行期间，拒绝新的 SAVE/BGSAVE 命令，并将 BGREWRITEAOF 命令排队
 - BRREWRITEAOF 执行期间，其他 BGSAVE 命令和 BGREWRITEAOF 命令会被拒绝
@@ -295,7 +295,7 @@ void aeMain(aeEventLoop *eventLoop) {
   - 主服务器收到后执行 BGSAVE，生成一个 RDB，并且用一个缓冲区记录之后的写命令
   - 主服务器将 RDB 文件发送给从服务器，从服务器载入 RDB 文件
   - 主服务器将缓冲区中的命令发给从服务器
-- 复制过程（部分重同步 PSYNC），从服务器断线重连后使用部分同步
+- 复制过程（部分重同步 <code>PSYNC</code>），从服务器断线重连后使用部分同步
   - 主服务器维持一个复制积压缓冲区，为 FIFO 队列，默认大小为 *repl-backlog-size (1M)*
   - 主从服务器都维持一个复制偏移量
   - 从服务器初次同步时，主服务器返回自身 id
@@ -320,16 +320,16 @@ Sentinel 只是一个 HA 方案，是非集群下，单机 Redis 来实现高可
 - Sentinel 与主服务器建立命令连接和订阅连接，命令连接用于向主服务器发送命令，订阅连接用于发现其他的 sentinel；Sentinel 根据给主服务器发送 INFO 后获取从服务器信息，并且与从服务器建立命令与订阅连接
 - Sentinel 发现其他 sentinel 后与它们建立命令连接
 - Sentinel 每 10s 向被监视的主从服务器发送 INFO 命令，当主服务器下线，或从服务器进行故障转移时，INFO 频率改为每秒一次
-- Sentinel 每秒一次发送 PING 判断实例是否下线，当回复错误或超时无回复的时候，标记实例为主观下线
+- Sentinel 每秒一次发送 PING 判断实例是否下线，当回复错误或超时无回复的时候，标记实例为<code>主观下线</code>
 - 当满足配置要求（每个 sentinel 设置的 quorum 值），sentinel 将主服务器判断为客观下线后。Sentinel 将选举 leader 并由 leader 对主服务器进行故障转移
-- Sentinel 的 leader 选举是基于 RAFT 协议的，不同点有：
+- Sentinel 的 leader 选举是基于 Raft 协议的，不同点有：
   - Sentinel 中除了超过半数，还需要超过配置的 quorum
   - Sentinel 选举出 leader 后不会发送 AppendEntries，而且提升某个 slave 为 master，这样新的 master 产生后，其他的 sentinel 检测到 master 恢复就会退出选举状态
 - 选举为 master 的 sentinel 根据下面顺序将 slave 提升为 master
   - 去除下线状态从服务器
-  - 去除五秒内没有回复 sentinel INFO 的从服务器
-  - 去除与主服务器断开时间较长的从
-  - 对剩下的从，按照优先级、复制偏移量、ID 排序，取其中第一个
+  - 去除五秒内没有回复 sentinel INFO 的从节点
+  - 去除与主节点断开时间较长的从
+  - 对剩下的从节点，按照优先级、复制偏移量、ID 排序，取其中第一个
 
 ### 集群
 
@@ -343,7 +343,7 @@ Sentinel 只是一个 HA 方案，是非集群下，单机 Redis 来实现高可
 
 - 当节点 A 正在迁移 i 槽到 B 时，当 A 在自己数据库中没找到该键时，返回客户端一个 ASK 错误，引导客户端到 B 节点获取数据
 
-- 集群节点间通过发送接收消息来进行通信，常见消息有 MEET/PING/PONG/PUBLIST/FAIL，有的消息通过 gossip 协议缓慢传播，有的通过广播让节点尽快获知
+- 集群节点间通过发送接收消息来进行通信，常见消息有 MEET/PING/PONG/PUBLIST/FAIL，有的消息通过 Gossip 协议缓慢传播，有的通过广播让节点尽快获知
 
 - 集群间的互相发现，更新配置信息用到的命令
 
@@ -351,7 +351,7 @@ Sentinel 只是一个 HA 方案，是非集群下，单机 Redis 来实现高可
 MEET/PING/PONG
   ```
   
-  是通过 gossip 协议实现的
+  是通过 Gossip 协议实现的
 
   - 每隔一秒钟随机抽取5个节点，对其中最长时间没发送过的节点发送 PING 消息（自己所知的随机两个节点信息）
 - 时间过长（*cluster-node-timeout* 的一半）没有 PING 过的节点，也会发送 PING 消息
@@ -359,9 +359,9 @@ MEET/PING/PONG
   - 收到者回复一条 PONG 消息
 - 一个节点也可以通过向集群广播自己的 PONG 消息，让集群立即刷新对节点的认识
   
-- Master 选举方案（RAFT 协议实现）：集群中 PING 来获取其他节点状态，当半数以上将某个主节点标为下线后，该被标为节点下线，向集群中广播 FAIL 消息。当从服务器发现自己的主节点下线后，开始竞选 master，发出申请，只有 master 节点具有投票权，master 返回是否同意投票（每个纪元只能返回一次），收到半数以上 master 选票的从节点成为新的主节点
+- Master 选举方案（Raft 协议实现）：集群中 PING 来获取其他节点状态，当半数以上将某个主节点标为下线后，该被标为节点下线，向集群中广播 FAIL 消息。当从服务器发现自己的主节点下线后，开始竞选 master，发出申请，只有 集群中<code>master 节点</code>具有投票权，master 返回是否同意投票（每个纪元只能返回一次），收到半数以上 master 选票的从节点成为新的主节点
 
-#### 节点心跳和gossip消息
+#### 节点心跳和Gossip消息
 
 每一秒，通常一个节点将ping 几个随机节点，这样ping的数据包的总数量（和接收的pong包）是一个恒定的量，无论集群中节点的数量。
 
@@ -371,15 +371,14 @@ MEET/PING/PONG
 
 例如，`NODE_TIMEOUT`设置为60秒的100个节点集群，每个节点会尝试发送99 ping每30秒，那么每秒3.3个ping，即乘以100个节点是每秒330个ping。
 
-有一些方法可以使用已经通过交换的Redis集群的gossip信息，以减少交换的消息的数量。例如，我们可以ping那些一半`NODE_TIMEOUT`内“可能的失败”状态的节点，然后每秒ping几个包到那些工作的节点。然而，在现实世界中，设置非常小的`NODE_TIMEOUT`的大型集群可靠地工作，将在未来作为大型集群实际部署测试。
+有一些方法可以使用已经通过交换的Redis集群的Gossip信息，以减少交换的消息的数量。例如，我们可以ping那些一半`NODE_TIMEOUT`内“可能的失败”状态的节点，然后每秒ping几个包到那些工作的节点。然而，在现实世界中，设置非常小的`NODE_TIMEOUT`的大型集群可靠地工作，将在未来作为大型集群实际部署测试。
 
 结论：
-
 > 每 `NODE_TIMEOUT`/2 的时间内，每个节点会发出 `n-1` 个 PING 命令，收到 `n-1` 个 PONG 响应；
 >
 > 1. `NODE_TIMEOUT`/2 时间内，PING 和 PONG 心跳命令的数量：`n x (n-1) x 2`= 2`n^2`
 > 2. Redis 集群中，节点数量大时，耗费较多的网络带宽；
-> 3. Redis 集群，因为使用 gossip 协议，进行心跳检测，所以，谨慎设计集群规模；
+> 3. Redis 集群，因为使用 Gossip 协议，进行心跳检测，所以，谨慎设计集群规模；
 > 4. Redis 集群规模过大时，可以采用分级策略，划分为多个隔离的 Redis 集群；
 
 ## 独立功能
@@ -432,10 +431,10 @@ typedef struct redisDb {
 
 - 执行 `multi` 后，除 multi/discard/exec/watch 之外的命令都会被加入到 commonds 数组中（FIFO）。执行 `exec` 时，批量执行命令，构造结果，清除客户端缓存状态。
 - `watch` 命令就像一个乐观锁，当键被修改时，客户端的 *REDIS_DIRTY_CAS* 标记被打开，执行 `exec` 时，事务失败
-- Redis 事务满足原子性，即事务之中不会插入其他命令
+- Redis 事务满足原子性，即事务之中不会插入其他命令,但是不支持事务回滚。
 - Redis 是单进程单线程，一个时刻只有一个事务在执行，满足隔离性
 - Redis 事务耐久性取决于 redis 持久化方式
-- Redis 事务不满足一致性，即错误出现后，不会回退
+- Redis 事务满足一致性，即错误出现后，不会回退
   - Redis 入队前有基本的命令检查，入队错误会抛弃整个事务
   - 事务之间失败，redis 会忽略该错误，继续执行
   - 服务器停机时，可能事务只执行一部分，导致事务出现不一致

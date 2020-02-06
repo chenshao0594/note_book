@@ -3,13 +3,13 @@
  这里主要是 Kafka 集群基本配置的相关内容。   
  ### 硬件要求 
  Kafka 集群基本硬件的保证   
-| | 集群规模| 内存| CPU| 存储 | 
-| -----| -----| -----| -----| ----- | 
- | Kafka Brokers | 3+ | 24GB+（小规模）；64GB+（大规模） | 多核（12CPU+），并允许超线程 | 6+ 1TB 的专属磁盘（RAID 或 JBOD） | 
- | Zookeeper | 3（小规模）；5（大规模） | 8GB+（小规模）；24GB+（大规模） | 2核+ | SSD 用于中间的日志传输 | 
- 
+| | 集群规模| 内存| CPU| 存储 |
+| -----| -----| -----| -----| ----- |
+| Kafka Brokers | 3+ | 24GB+（小规模）；64GB+（大规模） | 多核（12CPU+），并允许超线程 | 6+ 1TB 的专属磁盘（RAID 或 JBOD） |
+| Zookeeper | 3（小规模）；5（大规模） | 8GB+（小规模）；24GB+（大规模） | 2核+ | SSD 用于中间的日志传输 |
+
  ### OS 调优 
-  
+
  - OS page cache：应当可以缓存所有活跃的 Segment（Kafka 中最基本的数据存储单位）； 
  - fd 限制：100k+； 
  - 禁用 swapping：简单来说，swap 作用是当内存的使用达到一个临界值时就会将内存中的数据移动到 swap 交换空间，但是此时，内存可能还有很多空余资源，swap 走的是磁盘 IO，对于内存读写很在意的系统，最好禁止使用 swap 分区（参考[What is swapping in an OS?](https://www.quora.com/What-is-swapping-in-an-OS)）； 
@@ -20,7 +20,7 @@
  <li>至少要分配 6-8 GB 的堆内存。</li> 
 </ol>  
  ### Kafka 磁盘存储 
-  
+
  - 使用多块磁盘，并配置为 Kafka 专用的磁盘； 
  - JBOD vs RAID10； 
  - JBOD（Just a Bunch of Disks，简单来说它表示一个没有控制软件提供协调控制的磁盘集合，它将多个物理磁盘串联起来，提供一个巨大的逻辑磁盘，数据是按序存储，它的性能与单块磁盘类似） 
@@ -60,16 +60,14 @@
  - GC 信息； 
  - ZooKeeper 监控。  
  ## Kafka replica 相关配置及监控 
- 
+
  ### Kafka Replication 
-  
+
  - Partition 有两种副本：Leader，Follower； 
  - Leader 负责维护 in-sync-replicas(ISR) 
-<ul> 
- <li><code>replica.lag.time.max.ms</code>：默认为10000，如果 follower 落后于 leader 的消息数超过这个数值时，leader 就将 follower 从 isr 列表中移除；</li> 
- <li><code>num.replica.fetchers</code>，默认为1，用于从 leader 同步数据的 fetcher 线程数；</li> 
- <li><code>min.insync.replica</code>：Producer 端使用来用于保证 Durability（持久性）；</li> 
-</ul>  
+ - <code>replica.lag.time.max.ms</code>：默认为10000，如果 follower 落后于 leader 的消息数超过这个数值时，leader 就将 follower 从 isr 列表中移除；
+ - <code>num.replica.fetchers</code>，默认为1，用于从 leader 同步数据的 fetcher 线程数；
+ - <code>min.insync.replica</code>：Producer 端使用来用于保证 Durability（持久性）；</li> 
  ### Under Replicated Partitions 
  当发现 replica 的配置与集群的不同时，一般情况都是集群上的 replica 少于配置数时，可以从以下几个角度来排查问题：    
  - JMX 监控项：kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions； 
@@ -85,8 +83,8 @@
  <li>调整 ISR 的设置；</li> 
  <li>Broker 扩容。</li> 
 </ul>  
+
  ### Controller 
-  
  - 负责管理 partition 生命周期； 
  - 避免 Controller’s ZK 会话超时： 
 <ul> 
@@ -117,9 +115,9 @@
  - <code>zookeeper.session.timeout.ms</code> = 30s； 
  - <code>num.io.threads</code>：默认为8，KafkaRequestHandlerPool 的大小。  
  ## Kafka 相关资源的评估 
- 
+
  ### 集群评估 
-  
+
  - Broker 评估 
 <ul> 
  <li>每个 Broker 的 Partition 数不应该超过2k；</li> 
@@ -142,7 +140,7 @@
  <li>确保集群的阶段没有耗尽磁盘或带宽。</li> 
 </ul>  
  ### Broker 监控 
-  
+
  - Partition 数：kafka.server:type=ReplicaManager,name=PartitionCount； 
  - Leader 副本数：kafka.server:type=ReplicaManager,name=LeaderCount； 
  - ISR 扩容/缩容率：kafka.server:type=ReplicaManager,name=IsrExpandsPerSec； 
@@ -150,7 +148,7 @@
  - 网络请求的平均空闲率：NetworkProcessorAvgIdlePercent； 
  - 请求处理平均空闲率：RequestHandlerAvgIdlePercent。  
  ### Topic 评估 
-  
+
  - partition 数 
 <ul> 
  <li>Partition 数应该至少与最大 consumer group 中 consumer 线程数一致；</li> 
@@ -161,7 +159,7 @@
  - 使用带 key 的 topic； 
  - partition 扩容：当 partition 的数据量超过一个阈值时应该自动扩容（实际上还应该考虑网络流量）。  
  ### 合理地设置 partition 
-  
+
  - 根据吞吐量的要求设置 partition 数： 
 <ul> 
  <li>假设 Producer 单 partition 的吞吐量为 P；</li> 
@@ -182,9 +180,9 @@
  - 可能增加 End-to-end 延迟：一条消息只有其被同步到 isr 的所有 broker 上后，才能被消费，partition 越多，不同节点之间同步就越多，这可能会带来毫秒级甚至数十毫秒级的延迟； 
  - Client 将会需要更多的内存：Producer 和 Consumer 都会按照 partition 去缓存数据，每个 partition 都会带来数十 KB 的消耗，partition 越多, Client 将会占用更多的内存。  
  ## Producer 的相关配置、性能调优及监控 
- 
+
  ### Quotas 
-  
+
  - 避免被恶意 Client 攻击，保证 SLA； 
  - 设置 produce 和 fetch 请求的字节速率阈值； 
  - 可以应用在 user、client-id、或者 user 和 client-id groups； 
@@ -192,7 +190,7 @@
  - <code>replica.fetch.response.max.bytes</code>：用于限制 replica 拉取请求的内存使用； 
  - 进行数据迁移时限制贷款的使用，<code>kafka-reassign-partitions.sh -- -throttle option</code>。  
  ### Kafka Producer 
-  
+
  - 使用 Java 版的 Client； 
  - 使用 <code>kafka-producer-perf-test.sh</code> 测试你的环境； 
  - 设置内存、CPU、batch 压缩； 
@@ -209,7 +207,7 @@
  <li>降低 Broker 的处理速度；</li> 
 </ul>  
  ### 性能调优 
-  
+
  - 如果吞吐量小于网络带宽 
 <ul> 
  <li>增加线程；</li> 
@@ -220,7 +218,7 @@
  - 设置 acks=-1 时，如果延迟增大：可以增大 <code>num.replica.fetchers</code>（follower 同步数据的线程数）来调解； 
  - 跨数据中心的传输：增加 socket 缓冲区设置以及 OS tcp 缓冲区设置。  
  ### Prodcuer 监控 
-  
+
  - batch-size-avg 
  - compression-rate-avg 
  - waiting-threads 
@@ -229,9 +227,9 @@
  - record-send-rate 
  - records-per-request-avg  
  ## Kafka Consumer 配置、性能调优及监控 
- 
+
  ### Kafka Consumer 
-  
+
  - 使用 <code>kafka-consumer-perf-test.sh</code> 测试环境； 
  - 吞吐量问题： 
 <ul> 
@@ -246,7 +244,7 @@
 </ul> 
  - offset commit较慢：异步 commit 或 手动 commit。  
  ### Consumer 配置 
-  
+
  - <code>fetch.min.bytes</code> 、<code>fetch.max.wait.ms</code>； 
  - <code>max.poll.interval.ms</code>：调用 <code>poll()</code> 之后延迟的最大时间，超过这个时间没有调用 <code>poll()</code> 的话，就会认为这个 consumer 挂掉了，将会进行 rebalance； 
  - <code>max.poll.records</code>：当调用 <code>poll()</code> 之后返回最大的 record 数，默认为500； 

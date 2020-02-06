@@ -136,7 +136,7 @@ private def getNewProducerIdBlock(): Unit = {
  - 如果该节点不存在，直接从 0 开始分配，选择 0~1000 的 PID 段（ProducerIdManager 的 PidBlockSize 默认为 1000，即是每次申请的 PID 段大小）； 
  - 如果该节点存在，读取其中数据，根据 block_end 选择 
 <block_end+1, block_end+1000>
-  这个 PID 段（如果 PID 段超过 Long 类型的最大值，这里会直接返回一个异常）； 
+    这个 PID 段（如果 PID 段超过 Long 类型的最大值，这里会直接返回一个异常）； 
 </block_end+1,> 
  - 在选择了相应的 PID 段后，将这个 PID 段信息写回到 zk 的这个节点中，如果写入成功，那么 PID 段就证明申请成功，如果写入失败（写入时会判断当前节点的 zkVersion 是否与步骤1获取的 zkVersion 相同，如果相同，那么可以成功写入，否则写入就会失败，证明这个节点被修改过），证明此时可能其他的 Broker 已经更新了这个节点（当前的 PID 段可能已经被其他 Broker 申请），那么从步骤 1 重新开始，直到写入成功。  明白了 ProducerIdManager 如何申请 PID 段之后，再看 generateProducerId() 这个方法就简单很多了，这个方法在每次调用时，都会更新 nextProducerId 值（下一次可以使用 PID 值），如下所示：   
 ``` scala
@@ -179,7 +179,7 @@ public void setProducerState(long producerId, short producerEpoch, int baseSeque
     this.isTransactional = isTransactional;
 }
 ```
- 
+
  ## 幂等性实现整体流程 
  在前面讲述完 Kafka 幂等性的两个实现机制（PID+sequence numbers）之后，这里详细讲述一下，幂等性时其整体的处理流程，主要讲述幂等性相关的内容，其他的部分会简单介绍（可以参考前面【Kafka 源码分析系列文章】了解 Producer 端处理流程以及 Server 端关于 ProduceRequest 请求的处理流程），其流程如下图所示：   
 ![Producer 幂等性时处理流程](./images/kafka/kafka-idemoptent.png)
@@ -193,10 +193,8 @@ public void setProducerState(long producerId, short producerEpoch, int baseSeque
  - Producer 后台发送线程 Sender，在 <code>run()</code> 方法中，会先根据 TransactionManager 的 <code>shouldResetProducerStateAfterResolvingSequences()</code> 方法判断当前的 PID 是否需要重置，重置的原因是因为：如果有 topic-partition 的 batch 重试多次失败最后因为超时而被移除，这时 sequence number 将无法做到连续，因为 sequence number 有部分已经分配出去，这时系统依赖自身的机制无法继续进行下去（因为幂等性是要保证不丢不重的），相当于程序遇到了一个 fatal 异常，PID 会进行重置，TransactionManager 相关的缓存信息被清空（Producer 不会重启），只是保存状态信息的 TransactionManager 做了 <code>clear+new</code> 操作，遇到这个问题时是无法保证 exactly once 的（有数据已经发送失败了，并且超过了重试次数）； 
  - Sender 线程通过 <code>maybeWaitForProducerId()</code> 方法判断是否需要申请 PID，如果需要的话，这里会阻塞直到获取到相应的 PID 信息； 
  - Sender 线程通过 <code>sendProducerData()</code> 方法发送数据，整体流程与之前的 Producer 流程相似，不同的地方是在 RecordAccumulator 的 <code>drain()</code> 方法中，在加了幂等性之后，<code>drain()</code> 方法多了如下几步判断： 
-<ol> 
- <li>常规的判断：判断这个 topic-partition 是否可以继续发送（如果出现前面2中的情况是不允许发送的）、判断 PID 是否有效、如果这个 batch 是重试的 batch，那么需要判断这个 batch 之前是否还有 batch 没有发送完成，如果有，这里会先跳过这个 Topic-Partition 的发送，直到前面的 batch 发送完成，<strong>最坏情况下，这个 Topic-Partition 的 in-flight request 将会减少到1</strong>（这个涉及也是考虑到 server 端的一个设置，文章下面会详细分析）；</li> 
- <li>如果这个 ProducerBatch 还没有这个相应的 PID 和 sequence number 信息，会在这里进行相应的设置；</li> 
-</ol> 
+- 常规的判断：判断这个 topic-partition 是否可以继续发送（如果出现前面2中的情况是不允许发送的）、判断 PID 是否有效、如果这个 batch 是重试的 batch，那么需要判断这个 batch 之前是否还有 batch 没有发送完成，如果有，这里会先跳过这个 Topic-Partition 的发送，直到前面的 batch 发送完成，<strong>最坏情况下，这个 Topic-Partition 的 in-flight request 将会减少到1</strong>（这个涉及也是考虑到 server 端的一个设置，文章下面会详细分析）；如果这个 ProducerBatch 还没有这个相应的 PID 和 sequence number 信息，会在这里进行相应的设置；
+
  - 最后 Sender 线程再调用 <code>sendProduceRequests()</code> 方法发送 ProduceRequest 请求，后面的就跟之前正常的流程保持一致了。  这里看下几个关键方法的实现，首先是 Sender 线程获取 PID 信息的方法 maybeWaitForProducerId() ，其实现如下：   
 ``` scala
 //note: 等待直到 Producer 获取到相应的 PID 和 epoch 信息
@@ -319,16 +317,7 @@ public Map<Integer, List<ProducerBatch>> drain(Cluster cluster,
                                     ProducerBatch batch = deque.pollFirst();
                                     if (producerIdAndEpoch != null && !batch.hasSequence()) {//note: batch 的相关信息（seq id）是在这里设置的
                                         //note: 这个 batch 还没有 seq number 信息
-                                        // If the batch already has an assigned sequence, then we should not change the producer id and
-                                        // sequence number, since this may introduce duplicates. In particular,
-                                        // the previous attempt may actually have been accepted, and if we change
-                                        // the producer id and sequence here, this attempt will also be accepted,
-                                        // causing a duplicate.
-                                        //
-                                        // Additionally, we update the next sequence number bound for the partition,
-                                        // and also have the transaction manager track the batch so as to ensure
-                                        // that sequence ordering is maintained even if we receive out of order
-                                        // responses.
+                                        // If the batch already has an assigned sequence, then we should not change the producer id and sequence number, since this may introduce duplicates. In particular, the previous attempt may actually have been accepted, and if we change the producer id and sequence here, this attempt will also be accepted, causing a duplicate. Additionally, we update the next sequence number bound for the partition, and also have the transaction manager track the batch so as to ensure that sequence ordering is maintained even if we receive out of order responses.
                                         //note: 给这个 batch 设置相应的 pid、seq id 等信息
                                         batch.setProducerState(producerIdAndEpoch, transactionManager.sequenceNumber(batch.topicPartition), isTransactional);
                                         transactionManager.incrementSequenceNumber(batch.topicPartition, batch.recordCount); //note: 增加 partition 对应的下一个 seq id 值
@@ -355,7 +344,7 @@ public Map<Integer, List<ProducerBatch>> drain(Cluster cluster,
     return batches;
 }
 ```
- 
+
  ### 幂等性时 Server 端如何处理 ProduceRequest 请求 
  如前面途中所示，当 Broker 收到 ProduceRequest 请求之后，会通过 handleProduceRequest() 做相应的处理，其处理流程如下（这里只讲述关于幂等性相关的内容）：    
  - 如果请求是事务请求，检查是否对 TXN.id 有 Write 权限，没有的话返回 TRANSACTIONAL_ID_AUTHORIZATION_FAILED； 
