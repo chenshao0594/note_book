@@ -7,10 +7,10 @@
 </blockquote> 
  ## 整体流程 
  Kafka Server 端的副本同步，是由 replica fetcher 线程来负责的，而它又是由 ReplicaManager 来控制的。关于 ReplicaManger，不知道大家还记不记得在 [Kafka 源码解析之 Server 端如何处理 Produce 请求（十二）](http://matt33.com/2018/03/18/kafka-server-handle-produce-request/) 有一个简单的表格，如下所示。ReplicaManager 通过对 Partition 对象的管理，来控制着 Partition 对应的 Replica 实例，而 Replica 实例又是通过 Log 对象实例来管理着其底层的存储内容。   
-| | 管理对象| 组成部分 | 
-| -----| -----| ----- | 
- | 日志管理器（LogManager） | 日志（Log） | 日志分段（LogSegment） | 
- | 副本管理器（ReplicaManager） | 分区（Partition） | 副本（Replica） | 
+| | 管理对象| 组成部分 |
+| -----| -----| ----- |
+| 日志管理器（LogManager） | 日志（Log） | 日志分段（LogSegment） |
+| 副本管理器（ReplicaManager） | 分区（Partition） | 副本（Replica） |
  关于 ReplicaManager 的内容准备专门写一篇文章来介绍，刚好也作为对 Kafka 存储层内容的一个总结。   下面回到这篇文章的主题 —— 副本同步机制，在 ReplicaManager 中有一个实例变量 replicaFetcherManager，它负责管理所有副本同步线程，副本同步线程的启动和关闭都是由这个实例来操作的，关于副本同步相关处理逻辑，下面这张图可以作为一个整体流程，包括了 replica fetcher 线程的启动、工作流程、关闭三个部分，如下图所示：   
 ![副本同步机制](./images/kafka/fetcher_thread.png)
    后面的讲述会围绕着这张图开始，这里看不懂或不理解也没有关系，后面会一一讲解。   
@@ -149,20 +149,20 @@ private def getFetcherId(topic: String, partitionId: Int) : Int = {
   Utils.abs(31 * topic.hashCode() + partitionId) % numFetchers
 }
 ```
- 
+
  ### replica fetcher 线程参数设置 
  关于副本同步线程有一些参数配置，具体如下表所示：   
-| 参数| 说明| 默认值 | 
-| -----| -----| ----- | 
- | num.replica.fetchers | 从一个 broker 同步数据的 fetcher 线程数，增加这个值时也会增加该 broker 的 Io 并行度（也就是说：从一台 broker 同步数据，最多能开这么大的线程数） | 1 | 
- | replica.fetch.wait.max.ms | 对于 follower replica 而言，每个 Fetch 请求的最大等待时间，这个值应该比 replica.lag.time.max.ms 要小，否则对于那些吞吐量特别低的 topic 可能会导致 isr 频繁抖动 | 500 | 
- | replica.high.watermark.checkpoint.interval.ms | hw 刷到磁盘频率 | 500 | 
- | replica.lag.time.max.ms | 如果一个 follower 在这个时间内没有发送任何 fetch 请求或者在这个时间内没有追上 leader 当前的 log end offset，那么将会从 isr 中移除 | 10000 | 
- | replica.fetch.min.bytes | 每次 fetch 请求最少拉取的数据量，如果不满足这个条件，那么要等待 replicaMaxWaitTimeMs | 1 | 
- | replica.fetch.backoff.ms | 拉取时，如果遇到错误，下次拉取等待的时间 | 1000 | 
- | replica.fetch.max.bytes | 在对每个 partition 拉取时，最大的拉取数量，这并不是一个绝对值，如果拉取的第一条 msg 的大小超过了这个值，只要不超过这个 topic 设置（defined via message.max.bytes (broker config) or max.message.bytes (topic config)）的单条大小限制，依然会返回。 | 1048576 | 
- | replica.fetch.response.max.bytes | 对于一个 fetch 请求，返回的最大数据量（可能会涉及多个 partition），这并不是一个绝对值，如果拉取的第一条 msg 的大小超过了这个值，只要不超过这个 topic 设置（defined via message.max.bytes (broker config) or max.message.bytes (topic config)）的单条大小限制，依然会返回。 | 10MB | 
- 
+| 参数| 说明| 默认值 |
+| -----| -----| ----- |
+| num.replica.fetchers | 从一个 broker 同步数据的 fetcher 线程数，增加这个值时也会增加该 broker 的 Io 并行度（也就是说：从一台 broker 同步数据，最多能开这么大的线程数） | 1 |
+| replica.fetch.wait.max.ms | 对于 follower replica 而言，每个 Fetch 请求的最大等待时间，这个值应该比 replica.lag.time.max.ms 要小，否则对于那些吞吐量特别低的 topic 可能会导致 isr 频繁抖动 | 500 |
+| replica.high.watermark.checkpoint.interval.ms | hw 刷到磁盘频率 | 500 |
+| replica.lag.time.max.ms | 如果一个 follower 在这个时间内没有发送任何 fetch 请求或者在这个时间内没有追上 leader 当前的 log end offset，那么将会从 isr 中移除 | 10000 |
+| replica.fetch.min.bytes | 每次 fetch 请求最少拉取的数据量，如果不满足这个条件，那么要等待 replicaMaxWaitTimeMs | 1 |
+| replica.fetch.backoff.ms | 拉取时，如果遇到错误，下次拉取等待的时间 | 1000 |
+| replica.fetch.max.bytes | 在对每个 partition 拉取时，最大的拉取数量，这并不是一个绝对值，如果拉取的第一条 msg 的大小超过了这个值，只要不超过这个 topic 设置（defined via message.max.bytes (broker config) or max.message.bytes (topic config)）的单条大小限制，依然会返回。 | 1048576 |
+| replica.fetch.response.max.bytes | 对于一个 fetch 请求，返回的最大数据量（可能会涉及多个 partition），这并不是一个绝对值，如果拉取的第一条 msg 的大小超过了这个值，只要不超过这个 topic 设置（defined via message.max.bytes (broker config) or max.message.bytes (topic config)）的单条大小限制，依然会返回。 | 10MB |
+
  ## replica fetcher 线程启动 
  如上面的图所示，在 ReplicaManager 调用 makeFollowers() 启动 replica fetcher 线程后，它实际上是通过 ReplicaFetcherManager 实例进行相关 topic-partition 同步线程的启动和关闭，其启动过程分为下面两步：    
  - ReplicaFetcherManager 调用 <code>addFetcherForPartitions()</code> 添加对这些 topic-partition 的数据同步流程； 
@@ -219,7 +219,7 @@ override def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): 
     replicaMgr, metrics, time, quotaManager) //note: replica-fetch 线程
 }
 ```
- 
+
  ## replica fetcher 线程处理过程 
  replica fetcher 线程在启动之后就开始进行正常数据同步流程了，在文章最开始流程图中的第二部分（线程处理过程）已经给出了大概的处理过程，这节会详细介绍一下，这个过程都是在 ReplicaFetcherThread 线程中实现的。   
  ### doWoker 
@@ -278,7 +278,7 @@ protected def buildFetchRequest(partitionMap: Seq[(TopicPartition, PartitionFetc
   new FetchRequest(requestBuilder)
 }
 ```
- 
+
  ### processFetchRequest 
  processFetchRequest() 这个方法的作用是发送 Fetch 请求，并对返回的结果进行处理，最终写入到本地副本的 Log 实例中，其具体实现：   
 ``` scala
@@ -420,7 +420,7 @@ private def sendRequest(requestBuilder: AbstractRequest.Builder[_ <: AbstractReq
 
 }
 ```
- 
+
  #### processPartitionData 
  这个方法的作用是，处理 Fetch 请求的具体数据内容，简单来说就是：检查一下数据大小是否超过限制、将数据追加到本地副本的日志文件中、更新本地副本的 hw 值。   
 ``` scala
@@ -461,7 +461,7 @@ def processPartitionData(topicPartition: TopicPartition, fetchOffset: Long, part
   }
 }
 ```
- 
+
  ## 副本同步异常情况的处理 
  在副本同步的过程中，会遇到哪些异常情况呢？   大家一定会想到关于 offset 的问题，在 Kafka 中，关于 offset 的处理，无论是 producer 端、consumer 端还是其他地方，offset 似乎都是一个形影不离的问题。在副本同步时，关于 offset，会遇到什么问题呢？下面举两个异常的场景：    
  - 假如当前本地（id：1）的副本现在是 leader，其 LEO 假设为1000，而另一个在 isr 中的副本（id：2）其 LEO 为800，此时出现网络抖动，id 为1 的机器掉线后又上线了，但是此时副本的 leader 实际上已经变成了 2，而2的 LEO 为800，这时候1启动副本同步线程去2上拉取数据，希望从 offset=1000 的地方开始拉取，但是2上最大的 offset 才是800，这种情况该如何处理呢？ 
@@ -572,7 +572,7 @@ def getLeaderReplicaIfLocal(topicPartition: TopicPartition): Replica =  {
   }
 }
 ```
- 
+
  #### makeLeaders 
  makeLeaders() 方法的调用是在 broker 上这个 partition 的副本被设置为 leader 时触发的，其实现如下：   
 ``` scala
@@ -669,7 +669,7 @@ def removeFetcherForPartitions(partitions: Set[TopicPartition]) {
   info("Removed fetcher for partitions %s".format(partitions.mkString(",")))
 }
 ```
- 
+
  ### removePartitions 
  这个方法的作用是：ReplicaFetcherThread 将这些 topic-partition 从自己要拉取的 partition 列表中移除。   
 ``` scala
@@ -683,7 +683,7 @@ def removePartitions(topicPartitions: Set[TopicPartition]) {
   } finally partitionMapLock.unlock()
 }
 ```
- 
+
  ### ReplicaFetcherThread 的关闭 
  前面介绍那么多，似乎还是没有真正去关闭，那么 ReplicaFetcherThread 真正关闭是哪里操作的呢？   实际上 ReplicaManager 每次处理完 LeaderAndIsr 请求后，都会调用 ReplicaFetcherManager 的 shutdownIdleFetcherThreads() 方法，如果 fetcher 线程要拉取的 topic-partition 集合为空，那么就会关闭掉对应的 fetcher 线程。   
 ``` scala
