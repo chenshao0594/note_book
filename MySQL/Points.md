@@ -464,4 +464,50 @@ rr模式与rc模式的区别：
 
 ### MySQL写入binlog和redo log的流程。
 
+#### binlog的写入机制
+
 1. binlog的写入逻辑：事务执行过程中，先把日志写到binlog cache，事务提交的时候，再把binlog cache写到binlog文件中。一个事务的binlog是不能被拆开的，因此不论这个事务多大，也要确保一次性写入。
+
+   1. 每个线程有自己binlog cache，但是共用同一份binlog文件。写binlog共有以下两个步骤
+
+      - write，指的就是指把日志写入到文件系统的page cache，并没有把数据持久化到磁盘，所以速度比较快。
+      - fsync，才是将数据持久化到磁盘的操作。一般情况下，我们认为fsync才占磁盘的IOPS。
+
+      write 和fsync的时机，是由参数sync_binlog控制的：
+
+      1. sync_binlog=0的时候，表示每次提交事务都只write，不fsync；
+      2. sync_binlog=1的时候，表示每次提交事务都会执行fsync；
+      3. sync_binlog=N(N>1)的时候，表示每次提交事务都write，但累积N个事务后才fsync。
+      4. 经验值 sync_binlog设置为100~1000中的某个数值。将sync_binlog设置为N，对应的风险是：如果主机发生异常重启，会丢失最近N个事务的binlog日志。
+
+#### redo log的写入机制
+
+1. 事务在执行过程中，生成的redo log是要先写到redo log buffer的。
+
+   1. 如果事务执行期间MySQL发生异常重启，那这部分日志就丢了。由于事务并没有提交，所以这时日志丢了也不会有损失。
+
+2. redo log可能存在的三种状态
+
+   1. 在redo log buffer中，物理上是在MySQL进程内存中；
+   2. 写到磁盘(write)，但是没有持久化（fsync)，物理上是在文件系统的page cache里面；
+   3. 持久化到磁盘，对应的是hard disk；
+
+3. 控制redo log的写入策略，InnoDB提供了innodb_flush_log_at_trx_commit参数，它有三种可能取值：
+
+   1. 设置为0的时候，表示每次事务提交时都只是把redo log留在redo log buffer中;
+   2. 设置为1的时候，表示每次事务提交时都将redo log直接持久化到磁盘；
+   3. 设置为2的时候，表示每次事务提交时都只是把redo log写到page cache。
+
+   InnoDB有一个后台线程，每隔1秒，就会把redo log buffer中的日志，调用write写到文件系统的page cache，然后调用fsync持久化到磁盘。
+
+   注意，事务执行中间过程的redo log也是直接写在redo log buffer中的，这些redo log也会被后台线程一起持久化到磁盘。也就是说，一个没有提交的事务的redo log，也是可能已经持久化到磁盘的。
+
+### 主从同步
+
+备库B跟主库A之间维持了一个长连接。主库A内部有一个线程，专门用于服务备库B的这个长连接。一个事务日志同步的完整过程是这样的：
+
+1. 在备库B上通过change master命令，设置主库A的IP、端口、用户名、密码，以及要从哪个位置开始请求binlog，这个位置包含文件名和日志偏移量。
+2. 在备库B上执行start slave命令，这时候备库会启动两个线程，就是图中的io_thread和sql_thread。其中io_thread负责与主库建立连接。
+3. 主库A校验完用户名、密码后，开始按照备库B传过来的位置，从本地读取binlog，发给B。
+4. 备库B拿到binlog后，写到本地文件，称为中转日志（relay log）。
+5. sql_thread读取中转日志，解析出日志里的命令，并执行。
