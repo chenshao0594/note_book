@@ -1,12 +1,5 @@
----
-typora-root-url: images
-typora-copy-images-to: images
----
-
 # JVM
-
 ## 组成部分
-
 - 类加载器
 - 运行时数据区
   - 方法区
