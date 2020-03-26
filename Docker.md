@@ -42,3 +42,8 @@ Ctrl -D
 docker login ${registry_ip}:${registry_port}
 ```
 
+## k8s网关
+
+```shell
+traefik
+```
