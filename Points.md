@@ -82,3 +82,15 @@
 - 雪崩
 
 ## DB
+
+- index
+  - mysql 与mongodb的区别
+- 事务
+- 分库分表
+
+## Ngix
+
+- 性能
+- 配置
+- lua脚本
+

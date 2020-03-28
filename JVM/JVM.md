@@ -35,7 +35,7 @@
 
 ## Direct Memory
 
-- 直接内存(Direct Memory)，并不是虚拟机运行时数据区的一部分，也不是 Java 虚拟机规范中农定义的内存区域。在 JDK1.4 中新加入了 NIO(New Input/Output) 类，引入了一种基于通道(Channel)与缓冲区（Buffer）的 I/O 方式，它可以使用 native 函数库直接分配堆外内存，通过一个存储在 Java 堆中的**DirectByteBuffer 对象**作为这块内存的引用进行操作。这样能在一些场景中显著提高性能，因为避免了在 Java 堆和 Native 堆中来回复制数据。
+- 直接内存(Direct Memory)，并不是虚拟机运行时数据区的一部分，也不是 Java 虚拟机规范中定义的内存区域。在 JDK1.4 中新加入了 NIO(New Input/Output) 类，引入了一种基于通道(Channel)与缓冲区（Buffer）的 I/O 方式，它可以使用 native 函数库直接分配堆外内存，通过一个存储在 Java 堆中的**DirectByteBuffer 对象**作为这块内存的引用进行操作。这样能在一些场景中显著提高性能，因为避免了在 Java 堆和 Native 堆中来回复制数据。
 
 - 本机直接内存的分配不会受到 Java 堆大小的限制，受到本机总内存大小限制。
   配置虚拟机参数时，不要忽略直接内存，防止出现 OutOfMemoryError 异常。
